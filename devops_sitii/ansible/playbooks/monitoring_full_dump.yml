@@ -1,0 +1,323 @@
+---
+- name: Сбор информации и логов с monitoring хоста
+  hosts: monitoring
+  gather_facts: false
+  become: false
+  vars:
+    dump_dir: ../dump
+  tasks:
+    - name: Создание директории для дампов
+      delegate_to: localhost
+      file:
+        path: "{{ dump_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Очистка старых логов
+      delegate_to: localhost
+      file:
+        path: "{{ dump_dir }}/*.log"
+        state: absent
+      ignore_errors: true
+
+
+    - name: Сбор информации о дисковом пространстве
+      shell: df -h
+      register: disk_usage
+      ignore_errors: true
+
+    - name: Сохранение лога дискового пространства
+      delegate_to: localhost
+      copy:
+        content: "{{ disk_usage.stdout }}"
+        dest: "{{ dump_dir }}/disk_usage.log"
+      ignore_errors: true
+
+    - name: Сбор информации о памяти
+      shell: free -h
+      register: memory_usage
+      ignore_errors: true
+
+    - name: Сохранение лога использования памяти
+      delegate_to: localhost
+      copy:
+        content: "{{ memory_usage.stdout }}"
+        dest: "{{ dump_dir }}/memory_usage.log"
+      ignore_errors: true
+
+    - name: Сбор информации о CPU
+      shell: lscpu
+      register: cpu_info
+      ignore_errors: true
+
+    - name: Сохранение лога информации о CPU
+      delegate_to: localhost
+      copy:
+        content: "{{ cpu_info.stdout }}"
+        dest: "{{ dump_dir }}/cpu_info.log"
+      ignore_errors: true
+
+    - name: Сбор информации о процессах, сортировка по CPU
+      shell: ps aux --sort -%cpu
+      register: cpu_usage_per_process
+      ignore_errors: true
+
+    - name: Сохранение лога процессов, сортировка по CPU
+      delegate_to: localhost
+      copy:
+        content: "{{ cpu_usage_per_process.stdout }}"
+        dest: "{{ dump_dir }}/cpu_usage_per_process.log"
+      ignore_errors: true
+
+    - name: Сбор информации о процессах, сортировка по памяти
+      shell: ps aux --sort -%mem
+      register: memory_usage_per_process
+      ignore_errors: true
+
+    - name: Сохранение лога процессов, сортировка по памяти
+      delegate_to: localhost
+      copy:
+        content: "{{ memory_usage_per_process.stdout }}"
+        dest: "{{ dump_dir }}/memory_usage_per_process.log"
+      ignore_errors: true
+
+    - name: Сбор статистики сети
+      shell: nstat -p -t 60
+      register: nstat
+      ignore_errors: true
+
+    - name: Сохранение лога статистики сети
+      delegate_to: localhost
+      copy:
+        content: "{{ nstat.stdout }}"
+        dest: "{{ dump_dir }}/nstat.log"
+      ignore_errors: true
+
+    - name: Сбор информации о сокетах (все)
+      shell: ss -a -r
+      register: sockets_all
+      ignore_errors: true
+
+    - name: Сохранение лога всех сокетов
+      delegate_to: localhost
+      copy:
+        content: "{{ sockets_all.stdout }}"
+        dest: "{{ dump_dir }}/sockets_all.log"
+      ignore_errors: true
+
+    - name: Сбор информации об установленных соединениях
+      shell: ss -ptr
+      register: sockets_established
+      ignore_errors: true
+
+    - name: Сохранение лога установленных соединений
+      delegate_to: localhost
+      copy:
+        content: "{{ sockets_established.stdout }}"
+        dest: "{{ dump_dir }}/sockets_established.log"
+      ignore_errors: true
+
+    - name: Сбор информации о правилах iptables NAT
+      become: true
+      shell: iptables -t nat -L
+      register: iptables_nat_rules
+      ignore_errors: true
+
+    - name: Сохранение лога правил iptables NAT
+      delegate_to: localhost
+      copy:
+        content: "{{ iptables_nat_rules.stdout }}"
+        dest: "{{ dump_dir }}/iptables_nat_rules.log"
+      ignore_errors: true
+
+    - name: Сбор информации о сетевых интерфейсах
+      shell: ifconfig
+      register: ifconfig
+      ignore_errors: true
+
+    - name: Сохранение лога сетевых интерфейсов
+      delegate_to: localhost
+      copy:
+        content: "{{ ifconfig.stdout }}"
+        dest: "{{ dump_dir }}/ifconfig.log"
+      ignore_errors: true
+
+    - name: Сбор системных логов (последние 10000 записей)
+      shell: journalctl -b 0 -n 10000
+      register: monitoring_system_log
+      ignore_errors: true
+
+    - name: Сохранение лога системных журналов
+      delegate_to: localhost
+      copy:
+        content: "{{ monitoring_system_log.stdout }}"
+        dest: "{{ dump_dir }}/monitoring_system.log"
+      ignore_errors: true
+
+    - name: Сбор логов Nomad
+      shell: journalctl -u nomad -n 1000
+      register: nomad_log
+      ignore_errors: true
+
+    - name: Сохранение лога Nomad
+      delegate_to: localhost
+      copy:
+        content: "{{ nomad_log.stdout }}"
+        dest: "{{ dump_dir }}/nomad.log"
+      ignore_errors: true
+
+    - name: Сбор логов Docker
+      shell: journalctl -u docker -n 1000
+      register: docker_log
+      ignore_errors: true
+
+    - name: Сохранение лога Docker
+      delegate_to: localhost
+      copy:
+        content: "{{ docker_log.stdout }}"
+        dest: "{{ dump_dir }}/docker.log"
+      ignore_errors: true
+
+    - name: Сбор информации о времени и дате
+      shell: timedatectl
+      register: datetime
+      ignore_errors: true
+
+    - name: Сохранение лога времени и даты
+      delegate_to: localhost
+      copy:
+        content: "{{ datetime.stdout }}"
+        dest: "{{ dump_dir }}/monitoring-datetime.log"
+      ignore_errors: true
+
+    - name: Сбор статуса Nomad узла
+      shell: /usr/local/bin/nomad node status -self -stats
+      register: nomad_status
+      ignore_errors: true
+
+    - name: Сохранение лога статуса Nomad узла
+      delegate_to: localhost
+      copy:
+        content: "{{ nomad_status.stdout }}"
+        dest: "{{ dump_dir }}/nomad-status.log"
+      ignore_errors: true
+
+    - name: Сбор статуса job cti-monitoring в Nomad
+      shell: /usr/local/bin/nomad job status cti-monitoring
+      register: nomad_status_cti_monitoring
+      ignore_errors: true
+
+    - name: Сохранение лога статуса job cti-monitoring
+      delegate_to: localhost
+      copy:
+        content: "{{ nomad_status_cti_monitoring.stdout }}"
+        dest: "{{ dump_dir }}/nomad-status-cti-monitoring.log"
+      ignore_errors: true
+
+    - name: Сбор информации о job cti-monitoring в Nomad
+      shell: /usr/local/bin/nomad job inspect cti-monitoring
+      register: nomad_inspect_cti_monitoring
+      ignore_errors: true
+
+    - name: Сохранение лога информации о job cti-monitoring
+      delegate_to: localhost
+      copy:
+        content: "{{ nomad_inspect_cti_monitoring.stdout }}"
+        dest: "{{ dump_dir }}/nomad-inspect-cti-monitoring.log"
+      ignore_errors: true
+
+    - name: Сбор статуса job cti-monitoring-ui в Nomad
+      shell: /usr/local/bin/nomad job status cti-monitoring-ui
+      register: nomad_status_cti_monitoring_ui
+      ignore_errors: true
+
+    - name: Сохранение лога статуса job cti-monitoring-ui
+      delegate_to: localhost
+      copy:
+        content: "{{ nomad_status_cti_monitoring_ui.stdout }}"
+        dest: "{{ dump_dir }}/nomad-status-cti-monitoring-ui.log"
+      ignore_errors: true
+
+    - name: Сбор информации о job cti-monitoring-ui в Nomad
+      shell: /usr/local/bin/nomad job inspect cti-monitoring-ui
+      register: nomad_inspect_cti_monitoring_ui
+      ignore_errors: true
+
+    - name: Сохранение лога информации о job cti-monitoring-ui
+      delegate_to: localhost
+      copy:
+        content: "{{ nomad_inspect_cti_monitoring_ui.stdout }}"
+        dest: "{{ dump_dir }}/nomad-inspect-cti-monitoring-ui.log"
+      ignore_errors: true
+
+    - name: Сбор статуса job nginx в Nomad
+      shell: /usr/local/bin/nomad job status nginx
+      register: nomad_status_nginx
+      ignore_errors: true
+
+    - name: Сохранение лога статуса job nginx
+      delegate_to: localhost
+      copy:
+        content: "{{ nomad_status_nginx.stdout }}"
+        dest: "{{ dump_dir }}/nomad-status-nginx.log"
+      ignore_errors: true
+
+    - name: Сбор информации о job nginx в Nomad
+      shell: /usr/local/bin/nomad job inspect nginx
+      register: nomad_inspect_nginx
+      ignore_errors: true
+
+    - name: Сохранение лога информации о job nginx
+      delegate_to: localhost
+      copy:
+        content: "{{ nomad_inspect_nginx.stdout }}"
+        dest: "{{ dump_dir }}/nomad-inspect-nginx.log"
+      ignore_errors: true
+
+    - name: Сбор статуса job postgres в Nomad
+      shell: /usr/local/bin/nomad job status postgres
+      register: nomad_status_postgres
+      ignore_errors: true
+
+    - name: Сохранение лога статуса job postgres
+      delegate_to: localhost
+      copy:
+        content: "{{ nomad_status_postgres.stdout }}"
+        dest: "{{ dump_dir }}/nomad-status-postgresql.log"
+      ignore_errors: true
+
+    - name: Сбор информации о job postgres в Nomad
+      shell: /usr/local/bin/nomad job inspect postgres
+      register: nomad_inspect_postgres
+      ignore_errors: true
+
+    - name: Сохранение лога информации о job postgres
+      delegate_to: localhost
+      copy:
+        content: "{{ nomad_inspect_postgres.stdout }}"
+        dest: "{{ dump_dir }}/nomad-inspect-postgresql.log"
+      ignore_errors: true
+
+    - name: Сбор статуса job clickhouse в Nomad
+      shell: /usr/local/bin/nomad job status clickhouse
+      register: nomad_status_clickhouse
+      ignore_errors: true
+
+    - name: Сохранение лога статуса job clickhouse
+      delegate_to: localhost
+      copy:
+        content: "{{ nomad_status_clickhouse.stdout }}"
+        dest: "{{ dump_dir }}/nomad-status-clickhouse.log"
+      ignore_errors: true
+
+    - name: Сбор информации о job clickhouse в Nomad
+      shell: /usr/local/bin/nomad job inspect clickhouse
+      register: nomad_inspect_clickhouse
+      ignore_errors: true
+
+    - name: Сохранение лога информации о job clickhouse
+      delegate_to: localhost
+      copy:
+        content: "{{ nomad_inspect_clickhouse.stdout }}"
+        dest: "{{ dump_dir }}/nomad-inspect-clickhouse.log"
+      ignore_errors: true
